@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import { ApiError } from '@/api/http'
 import { useAuth } from '@/features/auth/AuthContext'
+import { resolvedLanguage } from '@/lib/i18n'
 import { LanguageToggle } from '@/components/LanguageToggle'
 import { Button } from '@/ui/Button'
 import { Input } from '@/ui/Input'
@@ -19,7 +20,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>
 
 export function LoginPage() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { user, login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -40,7 +41,9 @@ export function LoginPage() {
       navigate(from ?? '/', { replace: true })
     } catch (error) {
       if (error instanceof ApiError) {
-        setServerError(i18n.language === 'ar' ? error.envelope.message_ar : error.envelope.message_en)
+        setServerError(
+          resolvedLanguage() === 'ar' ? error.envelope.message_ar : error.envelope.message_en,
+        )
       } else {
         setServerError(t('errors.network'))
       }

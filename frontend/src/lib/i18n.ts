@@ -7,7 +7,14 @@ import en from '@/locales/en.json'
 
 export const RTL_LANGUAGES = ['ar']
 
-function applyDocumentDirection(language: string) {
+/** Base language actually in use ('en' | 'ar'), even when the detector
+ * reports a region-qualified locale like ar-SA. */
+export function resolvedLanguage(): string {
+  return i18n.resolvedLanguage ?? i18n.language.split('-')[0]
+}
+
+function applyDocumentDirection() {
+  const language = resolvedLanguage()
   document.documentElement.lang = language
   document.documentElement.dir = RTL_LANGUAGES.includes(language) ? 'rtl' : 'ltr'
 }
@@ -22,10 +29,11 @@ i18n
     },
     fallbackLng: 'en',
     supportedLngs: ['en', 'ar'],
+    nonExplicitSupportedLngs: true, // ar-SA browsers resolve to ar
     interpolation: { escapeValue: false },
   })
 
-applyDocumentDirection(i18n.language)
+applyDocumentDirection()
 i18n.on('languageChanged', applyDocumentDirection)
 
 export default i18n

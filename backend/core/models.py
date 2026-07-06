@@ -104,6 +104,30 @@ class Entitlement(UUIDModel):
         return f"{self.tenant_id}:{self.feature_code}={'on' if self.enabled else 'off'}"
 
 
+class AuthSession(UUIDModel):
+    """One refresh-token lineage = one device/session; drives the PLT-6
+    session list with revoke. `refresh_jti` follows the token across rotations.
+
+    Platform-level like User (platform admins have tenant NULL), so not a
+    TenantModel; `refresh_jti` is a token-issued UUID, unique by construction.
+    """
+
+    tenant = models.ForeignKey(
+        Tenant, null=True, blank=True, on_delete=models.CASCADE, related_name="+"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="auth_sessions"
+    )
+    refresh_jti = models.CharField(max_length=64, unique=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    last_refreshed_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.refresh_jti[:8]}"
+
+
 class TenantModel(UUIDModel):
     """Abstract base for every domain model (CLAUDE.md rule 1).
 
@@ -126,3 +150,42 @@ class TenantModel(UUIDModel):
 
     class Meta:
         abstract = True
+
+
+class Role(TenantModel):
+    """Permission bundle (PLT-4). Seeded from rbac.ROLE_TEMPLATES per tenant;
+    tenants clone and customize (docs/01 §1). Codes validated against
+    rbac.ALL_PERMISSION_CODES in the service layer.
+    """
+
+    name_en = models.CharField(max_length=100)
+    name_ar = models.CharField(max_length=100)
+    permissions = models.JSONField(default=list)
+    is_system = models.BooleanField(default=False)  # seeded template — rename/delete blocked
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "name_en"], name="uniq_role_name_tenant"),
+        ]
+
+    def __str__(self) -> str:
+        return self.name_en
+
+
+class UserRole(TenantModel):
+    """User↔Role assignment; explicit join model so the row is tenant-scoped."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="user_roles"
+    )
+    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="user_roles")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "user", "role"], name="uniq_userrole_tenant_user_role"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.role_id}"

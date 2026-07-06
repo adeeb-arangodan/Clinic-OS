@@ -5,6 +5,7 @@ happens client-side or at the template layer.
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -25,6 +26,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Third-party
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "channels",
     # SehaERP apps
@@ -137,8 +139,23 @@ CELERY_TIMEZONE = "UTC"
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
-    "DEFAULT_AUTHENTICATION_CLASSES": [],  # JWT wired in M0 deliverable 3
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "EXCEPTION_HANDLER": "core.errors.api_exception_handler",
 }
+
+# Auth (PLT-6): access lifetime doubles as the idle timeout (default 15 min,
+# clinical-role default per SRS); refresh covers one work shift. Rotation and
+# session bookkeeping are implemented in core.services, not simplejwt's views.
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.environ.get("JWT_ACCESS_MINUTES", "15"))),
+    "REFRESH_TOKEN_LIFETIME": timedelta(hours=int(os.environ.get("JWT_REFRESH_HOURS", "12"))),
+}
+
+JWT_REFRESH_COOKIE = "sehaerp_refresh"
+JWT_COOKIE_SECURE = True  # dev/test profiles override (no TLS on localhost)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "SehaERP API",

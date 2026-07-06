@@ -4,7 +4,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useV1AuditLogsRetrieve } from '@/api/generated/api'
-import { Button } from '@/ui/Button'
+import type { AuditLog } from '@/api/generated/model'
+import { DataTable, type DataTableColumn } from '@/ui/DataTable'
+import { DualDate } from '@/ui/DualDate'
 import { Input } from '@/ui/Input'
 
 function cursorOf(link: string | null | undefined): string | undefined {
@@ -13,7 +15,7 @@ function cursorOf(link: string | null | undefined): string | undefined {
 }
 
 export function AuditLogPage() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [action, setAction] = useState('')
   const [cursor, setCursor] = useState<string | undefined>(undefined)
 
@@ -22,9 +24,35 @@ export function AuditLogPage() {
     action: action || undefined,
   })
 
-  const rows = data?.results ?? []
   const nextCursor = cursorOf(data?.next)
   const prevCursor = cursorOf(data?.prev)
+
+  const columns: DataTableColumn<AuditLog>[] = [
+    {
+      key: 'when',
+      header: t('audit.when'),
+      className: 'whitespace-nowrap',
+      cell: (row) => <DualDate date={row.created_at} showTime />,
+    },
+    { key: 'action', header: t('audit.action'), cell: (row) => <b>{row.action}</b> },
+    {
+      key: 'entity',
+      header: t('audit.entity'),
+      className: 'text-text-muted',
+      cell: (row) => <span dir="ltr">{row.entity_type || '—'}</span>,
+    },
+    {
+      key: 'actor',
+      header: t('audit.actor'),
+      cell: (row) => row.actor_username ?? t('audit.system'),
+    },
+    {
+      key: 'ip',
+      header: t('audit.ip'),
+      className: 'text-text-muted',
+      cell: (row) => <span dir="ltr">{row.ip ?? '—'}</span>,
+    },
+  ]
 
   return (
     <section className="flex flex-col gap-4">
@@ -40,77 +68,20 @@ export function AuditLogPage() {
           }}
         />
       </div>
-
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-start text-xs text-text-muted">
-              <th className="px-3 py-2 text-start font-medium">{t('audit.when')}</th>
-              <th className="px-3 py-2 text-start font-medium">{t('audit.action')}</th>
-              <th className="px-3 py-2 text-start font-medium">{t('audit.entity')}</th>
-              <th className="px-3 py-2 text-start font-medium">{t('audit.actor')}</th>
-              <th className="px-3 py-2 text-start font-medium">{t('audit.ip')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isPending && (
-              <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-text-muted">
-                  {t('common.loading')}
-                </td>
-              </tr>
-            )}
-            {isError && (
-              <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-danger">
-                  {t('errors.network')}
-                </td>
-              </tr>
-            )}
-            {!isPending && !isError && rows.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-text-muted">
-                  {t('audit.empty')}
-                </td>
-              </tr>
-            )}
-            {rows.map((row) => (
-              <tr key={row.id} className="h-10 border-b border-border last:border-b-0">
-                <td className="whitespace-nowrap px-3 py-1.5 text-text-muted">
-                  {new Date(row.created_at).toLocaleString(i18n.language)}
-                </td>
-                <td className="px-3 py-1.5 font-medium">{row.action}</td>
-                <td className="px-3 py-1.5 text-text-muted" dir="ltr">
-                  {row.entity_type || '—'}
-                </td>
-                <td className="px-3 py-1.5">{row.actor_username ?? t('audit.system')}</td>
-                <td className="px-3 py-1.5 text-text-muted" dir="ltr">
-                  {row.ip ?? '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!prevCursor && cursor === undefined}
-          onClick={() => setCursor(prevCursor)}
-        >
-          {t('common.prev')}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!nextCursor}
-          onClick={() => setCursor(nextCursor)}
-        >
-          {t('common.next')}
-        </Button>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={data?.results ?? []}
+        rowKey={(row) => row.id}
+        isPending={isPending}
+        isError={isError}
+        emptyLabel={t('audit.empty')}
+        pagination={{
+          hasPrev: !!prevCursor || cursor !== undefined,
+          hasNext: !!nextCursor,
+          onPrev: () => setCursor(prevCursor),
+          onNext: () => setCursor(nextCursor),
+        }}
+      />
     </section>
   )
 }

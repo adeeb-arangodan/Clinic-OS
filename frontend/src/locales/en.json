@@ -6,6 +6,7 @@
   "common": {
     "language": "Language",
     "loading": "Loading…",
+    "empty": "Nothing here yet",
     "logout": "Sign out",
     "prev": "Previous",
     "next": "Next"

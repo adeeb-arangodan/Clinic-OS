@@ -13,4 +13,5 @@ urlpatterns = [
         views.SessionRevokeView.as_view(),
         name="auth-session-revoke",
     ),
+    path("audit-logs/", views.AuditLogListView.as_view(), name="audit-logs"),
 ]

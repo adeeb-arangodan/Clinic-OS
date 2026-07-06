@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from core.models import AuthSession
+from core.models import AuditLog, AuthSession
 
 
 class LoginSerializer(serializers.Serializer):
@@ -17,3 +17,25 @@ class SessionSerializer(serializers.ModelSerializer):
 
     def get_is_current(self, session: AuthSession) -> bool:
         return str(session.id) == self.context.get("current_sid")
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    actor_username = serializers.CharField(source="actor.username", default=None, read_only=True)
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            "id",
+            "created_at",
+            "actor_id",
+            "actor_username",
+            "branch_id",
+            "action",
+            "entity_type",
+            "entity_id",
+            "before",
+            "after",
+            "ip",
+            "request_id",
+        ]
+        read_only_fields = fields

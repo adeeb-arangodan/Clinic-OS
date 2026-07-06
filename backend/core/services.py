@@ -19,6 +19,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from core import audit
 from core.errors import ApiError
 from core.models import AuthSession, Role, Tenant, User, UserRole
 from core.rbac import ALL_PERMISSION_CODES, ROLE_TEMPLATES
@@ -82,6 +83,7 @@ def login(
         user_agent=user_agent[:300],
         ip_address=ip_address,
     )
+    audit.log_event("auth.login", instance=user, actor=user, tenant_id=user.tenant_id)
     return _issue_tokens(user, session)
 
 
@@ -114,9 +116,16 @@ def logout(*, raw_refresh: str) -> None:
     except TokenError:
         return
     token.blacklist()
-    AuthSession.objects.filter(refresh_jti=token["jti"], revoked_at__isnull=True).update(
-        revoked_at=timezone.now()
-    )
+    session = AuthSession.objects.filter(refresh_jti=token["jti"], revoked_at__isnull=True).first()
+    if session is not None:
+        session.revoked_at = timezone.now()
+        session.save(update_fields=["revoked_at", "updated_at"])
+        audit.log_event(
+            "auth.logout",
+            instance=session.user,
+            actor=session.user,
+            tenant_id=session.tenant_id,
+        )
 
 
 def revoke_session(*, user: User, session_id: uuid.UUID) -> AuthSession:
@@ -130,6 +139,7 @@ def revoke_session(*, user: User, session_id: uuid.UUID) -> AuthSession:
         BlacklistedToken.objects.get_or_create(token=outstanding)
     session.revoked_at = timezone.now()
     session.save(update_fields=["revoked_at", "updated_at"])
+    audit.log_event("auth.session_revoked", instance=session, tenant_id=session.tenant_id)
     return session
 
 
@@ -137,13 +147,18 @@ def seed_role_templates(*, tenant: Tenant) -> list[Role]:
     """Create the standard role templates for a tenant (PLT-4). Idempotent:
     existing roles (matched on name_en) are left untouched — tenants customize."""
     roles = []
+    created_names = []
     for name_en, name_ar, codes in ROLE_TEMPLATES:
-        role, _ = Role.objects.get_or_create(
+        role, created = Role.objects.get_or_create(
             tenant=tenant,
             name_en=name_en,
             defaults={"name_ar": name_ar, "permissions": codes, "is_system": True},
         )
         roles.append(role)
+        if created:
+            created_names.append(name_en)
+    if created_names:
+        audit.log_event("roles.seeded", tenant_id=tenant.id, after={"created": created_names})
     return roles
 
 
@@ -152,7 +167,11 @@ def assign_role(*, user: User, role: Role) -> UserRole:
         raise ApiError(
             "validation.invalid", field_errors={"role": ["Role belongs to another tenant."]}
         )
-    user_role, _ = UserRole.objects.get_or_create(tenant_id=role.tenant_id, user=user, role=role)
+    user_role, created = UserRole.objects.get_or_create(
+        tenant_id=role.tenant_id, user=user, role=role
+    )
+    if created:
+        audit.log_create(user_role)
     return user_role
 
 
@@ -163,6 +182,8 @@ def create_role(*, tenant: Tenant, name_en: str, name_ar: str, permissions: list
             "validation.invalid",
             field_errors={"permissions": [f"Unknown permission codes: {', '.join(unknown)}"]},
         )
-    return Role.objects.create(
+    role = Role.objects.create(
         tenant=tenant, name_en=name_en, name_ar=name_ar, permissions=permissions
     )
+    audit.log_create(role)
+    return role

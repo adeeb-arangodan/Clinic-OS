@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 
 class UUIDModel(models.Model):
@@ -126,6 +127,51 @@ class AuthSession(UUIDModel):
 
     def __str__(self) -> str:
         return f"{self.user_id}:{self.refresh_jti[:8]}"
+
+
+class AuditLog(models.Model):
+    """Immutable audit trail (PLT-5, NFR-5; docs/03 §1): actor, action, entity,
+    before/after jsonb, ip. Written only via core.audit hooks (rule 6).
+
+    The table is partitioned by month on `created_at` (docs/02 §5) — hence the
+    composite PK — and the app DB role has no UPDATE/DELETE on it. Rows are
+    created by migration 0005's raw DDL, not the ORM's CreateModel. `before`
+    and `after` hold only the changed fields on updates.
+    """
+
+    pk = models.CompositePrimaryKey("id", "created_at")
+    id = models.UUIDField(default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)  # partition key
+    tenant = models.ForeignKey(
+        Tenant, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
+    branch = models.ForeignKey(
+        Branch, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
+    actor = models.ForeignKey(  # PROTECT: deactivate users, never delete (NFR-5)
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    action = models.CharField(max_length=50)  # create | update | delete | auth.login | …
+    entity_type = models.CharField(max_length=100, blank=True)  # model label, e.g. "core.role"
+    entity_id = models.UUIDField(null=True, blank=True)
+    before = models.JSONField(null=True, blank=True)
+    after = models.JSONField(null=True, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    request_id = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["tenant", "-created_at"], name="auditlog_tenant_created_idx"),
+            models.Index(fields=["tenant", "entity_type", "entity_id"], name="auditlog_entity_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.action} {self.entity_type}:{self.entity_id}"
 
 
 class TenantModel(UUIDModel):

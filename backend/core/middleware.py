@@ -1,10 +1,33 @@
+import uuid
 from collections.abc import Callable
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
+from core import audit
 from core.models import Tenant
 from core.tenancy import tenant_scope
+
+
+class AuditContextMiddleware:
+    """Wraps every request for the audit trail (PLT-5, rule 6): assigns a
+    request_id (echoed as X-Request-ID) and stashes the request in a
+    contextvar so core.audit hooks can stamp actor/ip/user_agent — the actor
+    is read lazily at hook time, after DRF's JWT authentication has run.
+    """
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        request.request_id = uuid.uuid4()
+        token = audit.set_request(request)
+        try:
+            response = self.get_response(request)
+        finally:
+            audit.reset_request(token)
+        response["X-Request-ID"] = str(request.request_id)
+        return response
 
 
 class TenantMiddleware:

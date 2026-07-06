@@ -52,3 +52,15 @@ DROP POLICY IF EXISTS tenant_isolation ON {table};
 ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE {table} DISABLE ROW LEVEL SECURITY;
 """
+
+
+def month_partition_sql(table: str, year: int, month: int) -> str:
+    """CREATE ... PARTITION OF for one month of a RANGE(created_at) table.
+    Idempotent (IF NOT EXISTS); rows outside any month partition land in the
+    table's DEFAULT partition, so a missed month never loses writes.
+    """
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return f"""
+CREATE TABLE IF NOT EXISTS {table}_y{year}m{month:02d} PARTITION OF {table}
+    FOR VALUES FROM ('{year}-{month:02d}-01') TO ('{next_year}-{next_month:02d}-01');
+"""

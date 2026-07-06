@@ -1,12 +1,13 @@
 """Read-side service layer for core (CLAUDE.md rule 2)."""
 
 import uuid
+from datetime import datetime
 
 from django.conf import settings
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from core.models import AuthSession, Entitlement, Role, User
+from core.models import AuditLog, AuthSession, Entitlement, Role, User
 
 
 def permission_codes_for_user(user: User) -> frozenset[str]:
@@ -35,3 +36,30 @@ def active_sessions_for_user(user: User) -> QuerySet[AuthSession]:
     return user.auth_sessions.filter(
         revoked_at__isnull=True, last_refreshed_at__gte=cutoff
     ).order_by("-last_refreshed_at")
+
+
+def audit_logs(
+    tenant_id: uuid.UUID,
+    *,
+    action: str | None = None,
+    entity_type: str | None = None,
+    entity_id: uuid.UUID | None = None,
+    actor_id: uuid.UUID | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> QuerySet[AuditLog]:
+    """Clinic Admin audit view, own tenant only (PLT-5)."""
+    logs = AuditLog.objects.filter(tenant_id=tenant_id)
+    if action:
+        logs = logs.filter(action=action)
+    if entity_type:
+        logs = logs.filter(entity_type=entity_type)
+    if entity_id:
+        logs = logs.filter(entity_id=entity_id)
+    if actor_id:
+        logs = logs.filter(actor_id=actor_id)
+    if date_from:
+        logs = logs.filter(created_at__gte=date_from)
+    if date_to:
+        logs = logs.filter(created_at__lt=date_to)
+    return logs

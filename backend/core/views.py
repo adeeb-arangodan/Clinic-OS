@@ -1,16 +1,43 @@
+import datetime
 import uuid
 
 from django.conf import settings
+from django.http import QueryDict
+from django.utils.dateparse import parse_datetime
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core import selectors, services
-from core.serializers import LoginSerializer, SessionSerializer
+from core.errors import ApiError
+from core.pagination import DefaultCursorPagination
+from core.permissions import RequiresPermission
+from core.serializers import AuditLogSerializer, LoginSerializer, SessionSerializer
 
 REFRESH_COOKIE_PATH = "/api/v1/auth/"
+
+
+def _uuid_param(params: QueryDict, name: str) -> uuid.UUID | None:
+    raw = params.get(name)
+    if not raw:
+        return None
+    try:
+        return uuid.UUID(raw)
+    except ValueError:
+        raise ValidationError({name: ["Must be a valid UUID."]}) from None
+
+
+def _datetime_param(params: QueryDict, name: str) -> datetime.datetime | None:
+    raw = params.get(name)
+    if not raw:
+        return None
+    parsed = parse_datetime(raw)
+    if parsed is None:
+        raise ValidationError({name: ["Must be an ISO 8601 datetime."]})
+    return parsed
 
 
 def _set_refresh_cookie(response: Response, refresh: str) -> None:
@@ -113,6 +140,32 @@ class SessionListView(APIView):
         current_sid = request.auth.get("sid") if request.auth else None
         serializer = SessionSerializer(sessions, many=True, context={"current_sid": current_sid})
         return Response({"results": serializer.data})
+
+
+class AuditLogListView(APIView):
+    """GET /audit-logs/ — Clinic Admin's own-tenant audit trail with filters
+    (PLT-5): ?action=&entity_type=&entity_id=&actor_id=&date_from=&date_to=."""
+
+    permission_classes = [RequiresPermission("admin.view_audit")]
+
+    @extend_schema(responses=AuditLogSerializer(many=True))
+    def get(self, request: Request) -> Response:
+        if request.tenant is None:
+            raise ApiError("tenant.not_found", status.HTTP_404_NOT_FOUND)
+        params = request.query_params
+        logs = selectors.audit_logs(
+            request.tenant.id,
+            action=params.get("action"),
+            entity_type=params.get("entity_type"),
+            entity_id=_uuid_param(params, "entity_id"),
+            actor_id=_uuid_param(params, "actor_id"),
+            date_from=_datetime_param(params, "date_from"),
+            date_to=_datetime_param(params, "date_to"),
+        )
+        paginator = DefaultCursorPagination()
+        page = paginator.paginate_queryset(logs, request, view=self)
+        serializer = AuditLogSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 class SessionRevokeView(APIView):

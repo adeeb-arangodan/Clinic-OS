@@ -218,6 +218,64 @@ class Role(TenantModel):
         return self.name_en
 
 
+class NumberSequence(TenantModel):
+    """Per-tenant/branch counters (invoice no., MRN, queue token, …).
+    Allocate strictly via services.next_number — it locks the row with
+    SELECT ... FOR UPDATE so concurrent allocations never collide (docs/03 §4.6).
+    """
+
+    key = models.CharField(max_length=50)  # e.g. "invoice", "mrn", "queue_token"
+    last_value = models.BigIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            # nulls_distinct=False: one global (branch IS NULL) counter per key
+            models.UniqueConstraint(
+                fields=["tenant", "key", "branch"],
+                name="uniq_numbersequence_tenant_key_branch",
+                nulls_distinct=False,
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.key}={self.last_value}"
+
+
+class IntegrationTransaction(TenantModel):
+    """Every external call is an async Celery job surfaced through this record
+    (CLAUDE.md rule 7): idempotent via dedup_key, status drives the UI chip,
+    raw request/response retained. Status changes only through the guarded
+    transition functions in core.services (rule 3).
+    """
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        PROCESSING = "processing", "Processing"
+        SUCCESS = "success", "Success"
+        FAILED = "failed", "Failed"
+
+    adapter = models.CharField(max_length=50)  # "messaging", "nphies", "zatca", …
+    operation = models.CharField(max_length=50)  # e.g. "send_sms"
+    dedup_key = models.CharField(max_length=200)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.QUEUED)
+    request = models.JSONField(default=dict, blank=True)
+    response = models.JSONField(null=True, blank=True)
+    error = models.TextField(blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    external_ref = models.CharField(max_length=200, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "dedup_key"], name="uniq_integrationtx_tenant_dedup"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.adapter}.{self.operation} [{self.status}]"
+
+
 class UserRole(TenantModel):
     """User↔Role assignment; explicit join model so the row is tenant-scoped."""
 

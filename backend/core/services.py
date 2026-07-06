@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass
 
 from django.contrib.auth import authenticate
+from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 from django.utils import timezone
 from rest_framework import status
@@ -21,7 +22,15 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from core import audit
 from core.errors import ApiError
-from core.models import AuthSession, Role, Tenant, User, UserRole
+from core.models import (
+    AuthSession,
+    IntegrationTransaction,
+    NumberSequence,
+    Role,
+    Tenant,
+    User,
+    UserRole,
+)
 from core.rbac import ALL_PERMISSION_CODES, ROLE_TEMPLATES
 
 
@@ -173,6 +182,109 @@ def assign_role(*, user: User, role: Role) -> UserRole:
     if created:
         audit.log_create(user_role)
     return user_role
+
+
+def next_number(*, tenant_id: uuid.UUID, key: str, branch_id: uuid.UUID | None = None) -> int:
+    """Allocate the next value of a per-tenant/branch counter (docs/03 §4.6).
+
+    SELECT ... FOR UPDATE serializes concurrent allocations on the same
+    counter row: no duplicates, no gaps. Runs in its own transaction — call it
+    inside the business transaction that consumes the number (e.g. invoice
+    finalization) so an aborted caller doesn't burn a value silently.
+    """
+    with transaction.atomic():
+        sequence = (
+            NumberSequence.objects.select_for_update()
+            .filter(tenant_id=tenant_id, key=key, branch_id=branch_id)
+            .first()
+        )
+        if sequence is None:
+            try:
+                with transaction.atomic():  # savepoint: survive a create race
+                    sequence = NumberSequence.objects.create(
+                        tenant_id=tenant_id, key=key, branch_id=branch_id
+                    )
+            except IntegrityError:
+                sequence = NumberSequence.objects.select_for_update().get(
+                    tenant_id=tenant_id, key=key, branch_id=branch_id
+                )
+        sequence.last_value += 1
+        sequence.save(update_fields=["last_value", "updated_at"])
+        return sequence.last_value
+
+
+# --- IntegrationTransaction state machine (rules 3 + 7) ----------------------
+# queued → processing → success | failed. Illegal transitions raise.
+
+_TX_TRANSITIONS = {
+    IntegrationTransaction.Status.QUEUED: {IntegrationTransaction.Status.PROCESSING},
+    IntegrationTransaction.Status.PROCESSING: {
+        IntegrationTransaction.Status.SUCCESS,
+        IntegrationTransaction.Status.FAILED,
+    },
+}
+
+
+class IllegalTransition(Exception):
+    pass
+
+
+def transition_transaction(
+    tx: IntegrationTransaction,
+    to_status: str,
+    *,
+    response: dict | None = None,
+    error: str = "",
+    external_ref: str = "",
+) -> IntegrationTransaction:
+    allowed = _TX_TRANSITIONS.get(IntegrationTransaction.Status(tx.status), set())
+    if IntegrationTransaction.Status(to_status) not in allowed:
+        raise IllegalTransition(f"{tx.status} → {to_status}")
+
+    before = audit.snapshot(tx)
+    tx.status = to_status
+    if response is not None:
+        tx.response = response
+    if error:
+        tx.error = error
+    if external_ref:
+        tx.external_ref = external_ref
+    if to_status in (IntegrationTransaction.Status.SUCCESS, IntegrationTransaction.Status.FAILED):
+        tx.finished_at = timezone.now()
+    tx.save()
+    audit.log_update(tx, before=before, action=f"integration.{to_status}")
+    return tx
+
+
+def queue_message(
+    *,
+    tenant: Tenant,
+    user: User,
+    phone: str,
+    body: str,
+    dedup_key: str,
+) -> IntegrationTransaction:
+    """Queue an outbound message through the messaging adapter (PLT-8).
+    Idempotent: the same (tenant, dedup_key) returns the existing transaction
+    instead of sending twice (rule 7)."""
+    from core import tasks  # local import — tasks imports services
+
+    tx, created = IntegrationTransaction.objects.get_or_create(
+        tenant=tenant,
+        dedup_key=dedup_key,
+        defaults={
+            "adapter": "messaging",
+            "operation": "send_message",
+            "request": {"phone": phone, "body": body},
+            "created_by": user,
+        },
+    )
+    if created:
+        audit.log_create(tx, action="integration.queued")
+        tasks.process_integration_transaction.delay(
+            tenant_id=str(tenant.id), transaction_id=str(tx.id)
+        )
+    return tx
 
 
 def create_role(*, tenant: Tenant, name_en: str, name_ar: str, permissions: list[str]) -> Role:

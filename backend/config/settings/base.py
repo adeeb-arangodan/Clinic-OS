@@ -122,6 +122,12 @@ CHANNEL_LAYERS = {
     }
 }
 
+# Adapters (rule 7): every external system behind an interface; Mock is the
+# default everywhere so dev/demo/tests never need live credentials.
+ADAPTERS = {
+    "messaging": os.environ.get("ADAPTER_MESSAGING", "core.adapters.mock.MockMessagingAdapter"),
+}
+
 # Celery — queues per docs/02 §3; all tasks idempotent via dedup_key,
 # tenant_id always passed explicitly (never inferred from ambient state).
 CELERY_BROKER_URL = REDIS_URL

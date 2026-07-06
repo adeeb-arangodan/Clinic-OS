@@ -4,7 +4,7 @@ import uuid
 from django.conf import settings
 from django.http import QueryDict
 from django.utils.dateparse import parse_datetime
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
@@ -15,7 +15,14 @@ from core import selectors, services
 from core.errors import ApiError
 from core.pagination import DefaultCursorPagination
 from core.permissions import RequiresPermission
-from core.serializers import AuditLogSerializer, LoginSerializer, SessionSerializer
+from core.serializers import (
+    AuditLogSerializer,
+    LoginSerializer,
+    PaginatedAuditLogSerializer,
+    SessionListSerializer,
+    SessionSerializer,
+    TokenResponseSerializer,
+)
 
 REFRESH_COOKIE_PATH = "/api/v1/auth/"
 
@@ -64,6 +71,7 @@ def _token_response(pair: services.TokenPair, http_status: int = status.HTTP_200
                 "last_name": user.last_name,
                 "tenant": user.tenant.subdomain if user.tenant_id else None,
                 "permissions": sorted(selectors.permission_codes_for_user(user)),
+                "features": selectors.enabled_features(user.tenant_id),
             },
         },
         status=http_status,
@@ -88,7 +96,7 @@ class LoginView(APIView):
     authentication_classes = []
     permission_classes = []
 
-    @extend_schema(request=LoginSerializer, responses=OpenApiResponse(description="Token pair"))
+    @extend_schema(request=LoginSerializer, responses=TokenResponseSerializer)
     def post(self, request: Request) -> Response:
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -108,7 +116,7 @@ class RefreshView(APIView):
     authentication_classes = []
     permission_classes = []
 
-    @extend_schema(request=None, responses=OpenApiResponse(description="New token pair"))
+    @extend_schema(request=None, responses=TokenResponseSerializer)
     def post(self, request: Request) -> Response:
         raw = request.COOKIES.get(settings.JWT_REFRESH_COOKIE, "")
         pair = services.refresh_session(request=request, raw_refresh=raw)
@@ -134,7 +142,7 @@ class LogoutView(APIView):
 class SessionListView(APIView):
     """GET /auth/sessions/ — the caller's active devices (PLT-6)."""
 
-    @extend_schema(responses=SessionSerializer(many=True))
+    @extend_schema(responses=SessionListSerializer)
     def get(self, request: Request) -> Response:
         sessions = selectors.active_sessions_for_user(request.user)
         current_sid = request.auth.get("sid") if request.auth else None
@@ -148,7 +156,19 @@ class AuditLogListView(APIView):
 
     permission_classes = [RequiresPermission("admin.view_audit")]
 
-    @extend_schema(responses=AuditLogSerializer(many=True))
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("cursor", str),
+            OpenApiParameter("page_size", int),
+            OpenApiParameter("action", str),
+            OpenApiParameter("entity_type", str),
+            OpenApiParameter("entity_id", str),
+            OpenApiParameter("actor_id", str),
+            OpenApiParameter("date_from", str),
+            OpenApiParameter("date_to", str),
+        ],
+        responses=PaginatedAuditLogSerializer,
+    )
     def get(self, request: Request) -> Response:
         if request.tenant is None:
             raise ApiError("tenant.not_found", status.HTTP_404_NOT_FOUND)

@@ -2,21 +2,77 @@
 
 /*
  * SehaERP design tokens — docs/03 §5.2.
- * Seeded here for the scaffold; the full token set (semantic palette, chip
- * palette, type scale) is completed in M0 deliverable 7.
+ * Typography: IBM Plex Sans Arabic primary (AR + Latin), loaded via
+ * @fontsource in main.tsx. Type scale 12/14/16/20/24/30.
+ * Dark mode is deferred (S priority — owner dashboard first).
  */
 :root {
   --primary: #0f766e; /* teal-700 — healthcare trust */
   --primary-hover: #115e59; /* teal-800 */
+  --primary-foreground: #ffffff;
   --bg: #f8fafc; /* near-white */
+  --surface: #ffffff;
+  --border: #e2e8f0; /* slate-200 */
+  --text: #0f172a; /* slate-900 */
+  --text-muted: #475569; /* slate-600 */
+
+  /* Semantic */
+  --success: #059669; /* emerald-600 */
+  --warning: #f59e0b; /* amber-500 */
+  --danger: #e11d48; /* rose-600 */
+  --info: #0284c7; /* sky-600 */
+
+  /* Insurance chip palette (docs/03 §5.2) */
+  --chip-eligible-bg: #d1fae5; /* emerald-100 */
+  --chip-eligible-text: #065f46; /* emerald-800 */
+  --chip-pending-bg: #fef3c7; /* amber-100 */
+  --chip-pending-text: #92400e; /* amber-800 */
+  --chip-rejected-bg: #ffe4e6; /* rose-100 */
+  --chip-rejected-text: #9f1239; /* rose-800 */
+  --chip-cash-bg: #f1f5f9; /* slate-100 */
+  --chip-cash-text: #334155; /* slate-700 */
 }
 
 @theme inline {
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
   --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-chip-eligible-bg: var(--chip-eligible-bg);
+  --color-chip-eligible-text: var(--chip-eligible-text);
+  --color-chip-pending-bg: var(--chip-pending-bg);
+  --color-chip-pending-text: var(--chip-pending-text);
+  --color-chip-rejected-bg: var(--chip-rejected-bg);
+  --color-chip-rejected-text: var(--chip-rejected-text);
+  --color-chip-cash-bg: var(--chip-cash-bg);
+  --color-chip-cash-text: var(--chip-cash-text);
+
+  --font-sans: 'IBM Plex Sans Arabic', 'IBM Plex Sans', 'Noto Sans Arabic', system-ui, sans-serif;
+
+  /* Type scale (docs/03 §5.2) */
+  --text-xs: 0.75rem; /* 12 */
+  --text-sm: 0.875rem; /* 14 */
+  --text-base: 1rem; /* 16 */
+  --text-lg: 1.25rem; /* 20 */
+  --text-xl: 1.5rem; /* 24 */
+  --text-2xl: 1.875rem; /* 30 */
 }
 
 body {
   background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+/* Numbers in tables use tabular figures (docs/03 §5.2) */
+table {
+  font-variant-numeric: tabular-nums;
 }

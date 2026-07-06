@@ -30,6 +30,17 @@ def entitlement_enabled(tenant_id: uuid.UUID, feature_code: str) -> bool:
     ).exists()
 
 
+def enabled_features(tenant_id: uuid.UUID | None) -> list[str]:
+    """Feature codes for the client-side feature-flag context (rule 9)."""
+    if tenant_id is None:
+        return []
+    return sorted(
+        Entitlement.objects.filter(tenant_id=tenant_id, enabled=True).values_list(
+            "feature_code", flat=True
+        )
+    )
+
+
 def active_sessions_for_user(user: User) -> QuerySet[AuthSession]:
     """Sessions that can still refresh: not revoked, refresh not yet expired."""
     cutoff = timezone.now() - settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"]

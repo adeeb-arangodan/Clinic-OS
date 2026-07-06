@@ -4,6 +4,40 @@
     "tagline": "Clinic ERP for Saudi Arabia"
   },
   "common": {
-    "language": "Language"
+    "language": "Language",
+    "loading": "Loading…",
+    "logout": "Sign out",
+    "prev": "Previous",
+    "next": "Next"
+  },
+  "login": {
+    "title": "Sign in",
+    "username": "Username or email",
+    "password": "Password",
+    "submit": "Sign in",
+    "required": "This field is required"
+  },
+  "nav": {
+    "main": "Main navigation",
+    "home": "Home",
+    "auditLog": "Audit log"
+  },
+  "home": {
+    "welcome": "Welcome, {{name}}",
+    "hint": "Your role workspace arrives with the next milestones."
+  },
+  "audit": {
+    "title": "Audit log",
+    "filterAction": "Filter by action…",
+    "when": "When",
+    "action": "Action",
+    "entity": "Entity",
+    "actor": "Actor",
+    "ip": "IP",
+    "system": "System",
+    "empty": "No audit entries yet"
+  },
+  "errors": {
+    "network": "Could not reach the server. Please try again."
   }
 }

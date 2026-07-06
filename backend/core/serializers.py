@@ -8,6 +8,24 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(trim_whitespace=False)
 
 
+class UserSummarySerializer(serializers.Serializer):
+    """Login/refresh payload consumed by the frontend auth + feature-flag
+    contexts (rule 9). Response documentation only — built in the view."""
+
+    id = serializers.UUIDField()
+    username = serializers.CharField()
+    first_name = serializers.CharField(allow_blank=True)
+    last_name = serializers.CharField(allow_blank=True)
+    tenant = serializers.CharField(allow_null=True)
+    permissions = serializers.ListField(child=serializers.CharField())
+    features = serializers.ListField(child=serializers.CharField())
+
+
+class TokenResponseSerializer(serializers.Serializer):
+    access = serializers.CharField()
+    user = UserSummarySerializer()
+
+
 class SessionSerializer(serializers.ModelSerializer):
     is_current = serializers.SerializerMethodField()
 
@@ -17,6 +35,10 @@ class SessionSerializer(serializers.ModelSerializer):
 
     def get_is_current(self, session: AuthSession) -> bool:
         return str(session.id) == self.context.get("current_sid")
+
+
+class SessionListSerializer(serializers.Serializer):
+    results = SessionSerializer(many=True)
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
@@ -39,3 +61,11 @@ class AuditLogSerializer(serializers.ModelSerializer):
             "request_id",
         ]
         read_only_fields = fields
+
+
+class PaginatedAuditLogSerializer(serializers.Serializer):
+    """Response documentation for the cursor-paginated audit list (docs/03 §3)."""
+
+    results = AuditLogSerializer(many=True)
+    next = serializers.URLField(allow_null=True)
+    prev = serializers.URLField(allow_null=True)

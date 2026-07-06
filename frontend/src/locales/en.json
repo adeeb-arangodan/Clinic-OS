@@ -1,0 +1,9 @@
+{
+  "app": {
+    "name": "SehaERP",
+    "tagline": "Clinic ERP for Saudi Arabia"
+  },
+  "common": {
+    "language": "Language"
+  }
+}

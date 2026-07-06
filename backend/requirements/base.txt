@@ -1,0 +1,9 @@
+# Locked stack per docs/00 §6 and docs/02
+Django~=5.2
+djangorestframework~=3.16
+drf-spectacular~=0.28
+celery[redis]~=5.5
+channels~=4.3
+channels-redis~=4.3
+daphne~=4.2
+psycopg[binary]~=3.2

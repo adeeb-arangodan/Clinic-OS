@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+/*
+ * SehaERP design tokens — docs/03 §5.2.
+ * Seeded here for the scaffold; the full token set (semantic palette, chip
+ * palette, type scale) is completed in M0 deliverable 7.
+ */
+:root {
+  --primary: #0f766e; /* teal-700 — healthcare trust */
+  --primary-hover: #115e59; /* teal-800 */
+  --bg: #f8fafc; /* near-white */
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-bg: var(--bg);
+}
+
+body {
+  background-color: var(--bg);
+}

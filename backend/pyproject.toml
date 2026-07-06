@@ -1,0 +1,32 @@
+[project]
+name = "sehaerp-backend"
+version = "0.1.0"
+description = "SehaERP backend — multi-tenant clinic ERP for Saudi Arabia"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = ["**/migrations/*"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "DJ",  # flake8-django
+    "T20", # flake8-print
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py"]
+testpaths = ["."]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+branch = true
+omit = ["*/migrations/*", "*/tests/*", "manage.py", "config/*"]
